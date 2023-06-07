@@ -10,15 +10,18 @@ u32 getFileSize(FILE *f)
     return sz;
 }
 
-void Mov(instruction *ins, u16 *mem)
+void Mov(instruction *ins, u16 *reg, u8 *mem)
 {
     switch (ins->Operands[1].Type)
     {
     case operand_type::Operand_Register:
-        mem[ins->Operands[0].Register.Index] = mem[ins->Operands[1].Register.Index];
+        reg[ins->Operands[0].Register.Index] = reg[ins->Operands[1].Register.Index];
         break;
     case operand_type::Operand_Immediate:
-        mem[ins->Operands[0].Register.Index] = ins->Operands[1].Immediate.Value;
+        reg[ins->Operands[0].Register.Index] = ins->Operands[1].Immediate.Value;
+        break;
+    case operand_type::Operand_Memory:
+        printf("exp: %x", ins->Operands[0].Address.ExplicitSegment);
         break;
     default:
         break;
@@ -103,6 +106,29 @@ void Add(instruction *ins, u16 *mem, u16 *flags)
     }
 }
 
+void Jne(instruction *ins, u16 *mem, u16 *flags, u16 *ip) {
+    // printf("Immediate: %x\n", ins->Operands[0].Immediate);
+    if (!(*flags & 0x0040)) {
+        *ip = *ip + ins->Operands[0].Immediate.Value;
+        // printf("IP + Immediate: %x\n", *ip + ins->Operands[0].Immediate.Value);
+    }
+}
+
+void LogEffectiveAddress(effective_address_expression address) {
+    printf(" [");
+    if (address.Terms[0].Register.Index) {
+        printf("%s", Sim86_RegisterNameFromOperand(&address.Terms[0].Register));
+        if (address.Terms[1].Register.Index) {
+            printf("+%s", Sim86_RegisterNameFromOperand(&address.Terms[1].Register));
+        }
+    }
+
+    if(address.Displacement) {
+       printf("+%d", address.Displacement);
+    }
+    printf("] ");
+}
+
 void PrintInstruction(instruction ins)
 {
 
@@ -117,7 +143,7 @@ void PrintInstruction(instruction ins)
         printf("%x ", ins.Operands[0].Immediate);
         break;
     case operand_type::Operand_Memory:
-        printf("not implemented yet");
+        LogEffectiveAddress(ins.Operands[0].Address);
         break;
     default:
         break;
@@ -132,7 +158,7 @@ void PrintInstruction(instruction ins)
         printf("%x ; ", ins.Operands[1].Immediate);
         break;
     case operand_type::Operand_Memory:
-        printf("not implemented yet");
+        LogEffectiveAddress(ins.Operands[1].Address);
         break;
     default:
         break;
@@ -165,6 +191,7 @@ void PrintFlags(u16 flags)
 struct simulation_state
 {
     u16 Registers[9];
+    u8 Memory[1024 * 1024];
     u16 Flags = 0;
     u16 InstructionPointer = 0;
 };
@@ -176,6 +203,11 @@ simulation_state InitialState()
     for (u32 i = 1; i < 9; ++i)
     {
         s.Registers[i] = 0;
+    }
+
+    for (u32 i = 0; i < 1024 * 1024; ++i)
+    {
+        s.Memory[i] = 0;
     }
 
     return s;
@@ -257,7 +289,7 @@ int main(int argc, char *argv[])
             switch (Decoded.Op)
             {
             case Op_mov:
-                Mov(&Decoded, ss.Registers);
+                Mov(&Decoded, ss.Registers, ss.Memory);
                 break;
             case Op_sub:
                 Sub(&Decoded, ss.Registers, &ss.Flags, true);
@@ -267,6 +299,9 @@ int main(int argc, char *argv[])
                 break;
             case Op_add:
                 Add(&Decoded, ss.Registers, &ss.Flags);
+                break;
+            case Op_jne:
+                Jne(&Decoded, ss.Registers, &ss.Flags, &ss.InstructionPointer);
                 break;
             default:
                 printf("Not implemented yet!");
