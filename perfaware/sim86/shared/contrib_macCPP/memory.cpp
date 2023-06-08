@@ -10,21 +10,65 @@ u32 getFileSize(FILE *f)
     return sz;
 }
 
+u16 CalculateEffectiveAddress(u16 *reg, effective_address_expression address)
+{
+    u16 addressIndex = 0;
+
+    if (address.Terms[0].Register.Index)
+    {
+        addressIndex += reg[address.Terms[0].Register.Index];
+        if (address.Terms[1].Register.Index)
+        {
+            addressIndex += reg[address.Terms[1].Register.Index];
+        }
+    }
+
+    if (address.Displacement)
+    {
+        addressIndex += address.Displacement;
+    }
+
+    return addressIndex;
+}
+
 void Mov(instruction *ins, u16 *reg, u8 *mem)
 {
-    switch (ins->Operands[1].Type)
+    if (ins->Operands[0].Type == operand_type::Operand_Register)
     {
-    case operand_type::Operand_Register:
-        reg[ins->Operands[0].Register.Index] = reg[ins->Operands[1].Register.Index];
-        break;
-    case operand_type::Operand_Immediate:
-        reg[ins->Operands[0].Register.Index] = ins->Operands[1].Immediate.Value;
-        break;
-    case operand_type::Operand_Memory:
-        printf("exp: %x", ins->Operands[0].Address.ExplicitSegment);
-        break;
-    default:
-        break;
+        switch (ins->Operands[1].Type)
+        {
+        case operand_type::Operand_Register:
+            reg[ins->Operands[0].Register.Index] = reg[ins->Operands[1].Register.Index];
+            break;
+        case operand_type::Operand_Immediate:
+            reg[ins->Operands[0].Register.Index] = ins->Operands[1].Immediate.Value;
+            break;
+        case operand_type::Operand_Memory:
+            reg[ins->Operands[0].Register.Index] = mem[CalculateEffectiveAddress(reg, ins->Operands[1].Address)];
+            break;
+        default:
+            break;
+        }
+    }
+    else if (ins->Operands[0].Type == operand_type::Operand_Memory)
+    {
+
+        u16 addressIndex = CalculateEffectiveAddress(reg, ins->Operands[0].Address);
+
+        switch (ins->Operands[1].Type)
+        {
+        case operand_type::Operand_Register:
+            mem[addressIndex] = reg[ins->Operands[1].Register.Index];
+            break;
+        case operand_type::Operand_Immediate:
+            mem[addressIndex] = ins->Operands[1].Immediate.Value;
+            break;
+        case operand_type::Operand_Memory:
+            mem[addressIndex] = mem[CalculateEffectiveAddress(reg, ins->Operands[1].Address)];
+            break;
+        default:
+            break;
+        }
     }
 }
 
@@ -140,7 +184,7 @@ void PrintInstruction(instruction ins)
         printf("%s ", Sim86_RegisterNameFromOperand(&ins.Operands[0].Register));
         break;
     case operand_type::Operand_Immediate:
-        printf("%x ", ins.Operands[0].Immediate);
+        printf("%x ", ins.Operands[0].Immediate.Value);
         break;
     case operand_type::Operand_Memory:
         LogEffectiveAddress(ins.Operands[0].Address);
@@ -155,7 +199,7 @@ void PrintInstruction(instruction ins)
         printf("%s ; ", Sim86_RegisterNameFromOperand(&ins.Operands[1].Register));
         break;
     case operand_type::Operand_Immediate:
-        printf("%x ; ", ins.Operands[1].Immediate);
+        printf("%x ; ", ins.Operands[1].Immediate.Value);
         break;
     case operand_type::Operand_Memory:
         LogEffectiveAddress(ins.Operands[1].Address);
