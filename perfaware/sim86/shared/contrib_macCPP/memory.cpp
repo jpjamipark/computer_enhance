@@ -2,12 +2,79 @@
 #include <string.h>
 #include "sim86_shared.h"
 
+int cmp_cycles[4][4] = {{3, 9, 4}, {9, 10, 0}};
+int add_cycles[2][3] = {{}};
+
+struct simulation_state
+{
+    u16 Registers[9];
+    u8 Memory[1024 * 1024];
+    u16 Flags = 0;
+    u16 InstructionPointer = 0;
+    u16 Cycles = 0;
+};
+
+void PrintMemory(u8 *mem)
+{
+    FILE *binary = fopen("output.data", "wb");
+    for (u32 i = 0; i < 1024 * 1024; ++i)
+    {
+        fputc(mem[i], binary);
+    }
+    fclose(binary);
+}
+
 u32 getFileSize(FILE *f)
 {
     fseek(f, 0L, SEEK_END);
     u32 sz = ftell(f);
     rewind(f);
     return sz;
+}
+
+u16 CalculateEffectiveAddressCycles(effective_address_expression address)
+{
+    // BID
+    // 001 : 6
+    // 010 : 5
+    // 100 : 5
+    // 011 : 9
+    // 101 : 9
+    // 110 : 9
+    bool displacement = address.Displacement;
+    const char *term0 = Sim86_RegisterNameFromOperand(&address.Terms[0].Register);
+    const char *term1 = Sim86_RegisterNameFromOperand(&address.Terms[1].Register);
+    if (address.Displacement && !address.Terms[0].Register.Index && !address.Terms[1].Register.Index)
+    {
+        return 5;
+    }
+    else if (!address.Displacement && !address.Terms[0].Register.Index && address.Terms[1].Register.Index)
+    {
+        return 9;
+    }
+    else if (!address.Displacement && !address.Terms[1].Register.Index && address.Terms[0].Register.Index)
+    {
+        return 9;
+    }
+    else if (!address.Displacement && (strcmp(term0, "bx") && strcmp(term1, "si")) || (strcmp(term0, "bp") && strcmp(term1, "di")))
+    {
+        return 7;
+    }
+    else if (!address.Displacement && (strcmp(term0, "bx") && strcmp(term1, "di")) || (strcmp(term0, "bp") && strcmp(term1, "si")))
+    {
+        return 8;
+    }
+    else if (address.Displacement && (strcmp(term0, "bx") && strcmp(term1, "si")) || (strcmp(term0, "bp") && strcmp(term1, "di")))
+    {
+        return 11;
+    }
+    else if (address.Displacement && (strcmp(term0, "bx") && strcmp(term1, "di")) || (strcmp(term0, "bp") && strcmp(term1, "si")))
+    {
+        return 12;
+    }
+
+    printf("Failed to get the address cycle value");
+    return 0;
 }
 
 u16 CalculateEffectiveAddress(u16 *reg, effective_address_expression address)
@@ -232,14 +299,6 @@ void PrintFlags(u16 flags)
     printf("\n");
 }
 
-struct simulation_state
-{
-    u16 Registers[9];
-    u8 Memory[1024 * 1024];
-    u16 Flags = 0;
-    u16 InstructionPointer = 0;
-};
-
 simulation_state InitialState()
 {
     simulation_state s = {};
@@ -254,11 +313,70 @@ simulation_state InitialState()
         s.Memory[i] = 0;
     }
 
+    s.Cycles = 0;
+
     return s;
+}
+
+int CalculateInstructionCycles(instruction ins)
+{
+    // printf("%s ", Sim86_MnemonicFromOperationType(ins.Op));
+    int cycles = 0;
+
+    switch (ins.Op)
+    {
+    case Op_mov:
+        break;
+    case Op_sub:
+        break;
+    case Op_cmp:
+        break;
+    case Op_add:
+        break;
+    case Op_jne:
+        break;
+    }
+
+    switch (ins.Operands[0].Type)
+    {
+    // case operand_type::Operand_Register:
+    //     printf("%s ", Sim86_RegisterNameFromOperand(&ins.Operands[0].Register));
+    //     break;
+    // case operand_type::Operand_Immediate:
+    //     printf("%x ", ins.Operands[0].Immediate.Value);
+    //     break;
+    case operand_type::Operand_Memory:
+        cycles += CalculateEffectiveAddressCycles(ins.Operands[0].Address);
+        break;
+    default:
+        break;
+    }
+
+    switch (ins.Operands[1].Type)
+    {
+    // case operand_type::Operand_Register:
+    //     printf("%s ; ", Sim86_RegisterNameFromOperand(&ins.Operands[1].Register));
+    //     break;
+    // case operand_type::Operand_Immediate:
+    //     printf("%x ; ", ins.Operands[1].Immediate.Value);
+    //     break;
+    case operand_type::Operand_Memory:
+        cycles += CalculateEffectiveAddressCycles(ins.Operands[1].Address);
+        break;
+    default:
+        break;
+    }
+
+    return cycles;
 }
 
 void diffState(simulation_state s1, simulation_state s2)
 {
+    if (s1.Cycles != s2.Cycles)
+    {
+        printf("Cycles: %x -> %x;", s1.Cycles, s2.Cycles);
+    }
+
     for (u32 i = 0; i < 9; ++i)
     {
         if (s1.Registers[i] != s2.Registers[i])
@@ -351,7 +469,7 @@ int main(int argc, char *argv[])
                 printf("Not implemented yet!");
                 break;
             }
-            // PrintFlags(ss.Flags);
+            ss.Cycles += CalculateInstructionCycles(Decoded);
             diffState(oldState, ss);
             printf("\n");
         }
@@ -365,7 +483,7 @@ int main(int argc, char *argv[])
     PrintRegisters(ss.Registers);
     PrintFlags(ss.Flags);
     printf("IP: %x\n", ss.InstructionPointer);
-
+    PrintMemory(ss.Memory);
     fclose(binary);
     return 0;
 }
