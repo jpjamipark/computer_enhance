@@ -2,9 +2,6 @@
 #include <string.h>
 #include "sim86_shared.h"
 
-int cmp_cycles[4][4] = {{3, 9, 4}, {9, 10, 0}};
-int add_cycles[2][3] = {{}};
-
 struct simulation_state
 {
     u16 Registers[9];
@@ -46,13 +43,21 @@ u16 CalculateEffectiveAddressCycles(effective_address_expression address)
     const char *term1 = Sim86_RegisterNameFromOperand(&address.Terms[1].Register);
     if (address.Displacement && !address.Terms[0].Register.Index && !address.Terms[1].Register.Index)
     {
-        return 5;
+        return 6;
     }
     else if (!address.Displacement && !address.Terms[0].Register.Index && address.Terms[1].Register.Index)
     {
-        return 9;
+        return 5;
     }
     else if (!address.Displacement && !address.Terms[1].Register.Index && address.Terms[0].Register.Index)
+    {
+        return 5;
+    }
+    else if (address.Displacement && !address.Terms[0].Register.Index && address.Terms[1].Register.Index)
+    {
+        return 9;
+    }
+    else if (address.Displacement && !address.Terms[1].Register.Index && address.Terms[0].Register.Index)
     {
         return 9;
     }
@@ -325,13 +330,53 @@ int CalculateInstructionCycles(instruction ins)
 
     switch (ins.Op)
     {
+    case Op_add:
+        if (ins.Operands[0].Type == operand_type::Operand_Register && ins.Operands[1].Type == operand_type::Operand_Register)
+        {
+            cycles += 3;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Register && ins.Operands[1].Type == operand_type::Operand_Memory)
+        {
+            cycles += 9;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Memory && ins.Operands[1].Type == operand_type::Operand_Register)
+        {
+            cycles += 16;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Register && ins.Operands[1].Type == operand_type::Operand_Immediate)
+        {
+            cycles += 4;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Memory && ins.Operands[1].Type == operand_type::Operand_Immediate)
+        {
+            cycles += 17;
+        }
+        break;
     case Op_mov:
+        if (ins.Operands[0].Type == operand_type::Operand_Register && ins.Operands[1].Type == operand_type::Operand_Register)
+        {
+            cycles += 2;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Register && ins.Operands[1].Type == operand_type::Operand_Memory)
+        {
+            cycles += 8;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Memory && ins.Operands[1].Type == operand_type::Operand_Register)
+        {
+            cycles += 9;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Register && ins.Operands[1].Type == operand_type::Operand_Immediate)
+        {
+            cycles += 4;
+        }
+        else if (ins.Operands[0].Type == operand_type::Operand_Memory && ins.Operands[1].Type == operand_type::Operand_Immediate)
+        {
+            cycles += 10;
+        }
         break;
     case Op_sub:
         break;
     case Op_cmp:
-        break;
-    case Op_add:
         break;
     case Op_jne:
         break;
@@ -339,12 +384,6 @@ int CalculateInstructionCycles(instruction ins)
 
     switch (ins.Operands[0].Type)
     {
-    // case operand_type::Operand_Register:
-    //     printf("%s ", Sim86_RegisterNameFromOperand(&ins.Operands[0].Register));
-    //     break;
-    // case operand_type::Operand_Immediate:
-    //     printf("%x ", ins.Operands[0].Immediate.Value);
-    //     break;
     case operand_type::Operand_Memory:
         cycles += CalculateEffectiveAddressCycles(ins.Operands[0].Address);
         break;
@@ -354,12 +393,6 @@ int CalculateInstructionCycles(instruction ins)
 
     switch (ins.Operands[1].Type)
     {
-    // case operand_type::Operand_Register:
-    //     printf("%s ; ", Sim86_RegisterNameFromOperand(&ins.Operands[1].Register));
-    //     break;
-    // case operand_type::Operand_Immediate:
-    //     printf("%x ; ", ins.Operands[1].Immediate.Value);
-    //     break;
     case operand_type::Operand_Memory:
         cycles += CalculateEffectiveAddressCycles(ins.Operands[1].Address);
         break;
@@ -374,7 +407,7 @@ void diffState(simulation_state s1, simulation_state s2)
 {
     if (s1.Cycles != s2.Cycles)
     {
-        printf("Cycles: %x -> %x;", s1.Cycles, s2.Cycles);
+        printf("Cycles: %d -> %d;", s1.Cycles, s2.Cycles);
     }
 
     for (u32 i = 0; i < 9; ++i)
